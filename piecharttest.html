@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>pie chart test</title>
+
+	<script src="https://www.amcharts.com/lib/3/amcharts.js"></script>
+	<script src="https://www.amcharts.com/lib/3/pie.js"></script>
+	<script src="https://www.amcharts.com/lib/3/plugins/export/export.min.js"></script>
+	<link rel="stylesheet" href="https://www.amcharts.com/lib/3/plugins/export/export.css" type="text/css" media="all" />
+	<script src="https://www.amcharts.com/lib/3/themes/light.js"></script>
+
+
+</head>
+<body>
+	
+	<h1>Test file upload</h1>
+
+	<form id="csv_form">
+		<input type="file" name="File Upload" id="txtFileUpload" accept=".csv" />
+	</form>
+
+	<div id="chartdiv" style="width:100%;height:500px;background-color:red"></div>	
+
+
+	<script type="text/javascript">
+		function autorun(){
+
+			var uploadInput = document.getElementById("txtFileUpload");
+			uploadInput.addEventListener('change', function(e){
+				e.preventDefault();
+				console.log(e);
+
+				// get file
+				var file = e.target.files[0];
+				var reader = new FileReader();
+				var csvAsObject = [];
+
+				// read file
+				reader.readAsText(file);
+				reader.onload = function(event) {
+					var csvData = event.target.result; // csv as string
+					var csvArray = CSVToArray( csvData ); // custom function from SO
+					
+					var columnNames = csvArray.shift(); // drop colnames
+
+					// now convert to ob
+					var csvObsArray = [];
+					for (var i = 0, l = csvArray.length; i < l; i++) {
+						// if this line doesn't match length of cols, skip it (last line)
+						if( csvArray[i].length!=columnNames.length ){
+							continue;
+						}
+
+						var thisLineAsObject = {};
+
+						for(var ci = 0, cl = columnNames.length; ci<cl; ci++){
+							thisLineAsObject[columnNames[ci]] = csvArray[i][ci];
+						}
+
+						csvObsArray.push(thisLineAsObject);
+
+					};
+
+					csvObsArray = addJSDateArray(csvObsArray);
+					csvObsArray = addHashTagsArray(csvObsArray);
+
+					window.monzoData = csvObsArray;
+
+				};
+				reader.onerror = function(e) {
+					console.log('Unable to read ' + file.fileName);
+				};
+				reader.onloadend = function(e) {
+					console.log('finished reading ' + file.fileName);
+
+				};
+
+			}, false);
+
+
+		}
+		if (window.addEventListener) window.addEventListener("load", autorun, false);
+		else if (window.attachEvent) window.attachEvent("onload", autorun);
+		else window.onload = autorun;
+
+
+		// ==================== chart stuff START
+
+		function chartTypesFromMonzoOb(_monzoOb){
+
+			var transactionsByCategory = {};
+			var categories = [];
+
+			for (var i = 0; i < _monzoOb.length; i++) {
+				var thisLineObject = _monzoOb[i];
+				var category = thisLineObject.category;
+				// skip if topup
+				if( parseFloat(thisLineObject.amount)>0 ) continue;
+
+				// create category if not yet set
+				if( transactionsByCategory[category] == undefined ){
+					categories.push(category);
+					transactionsByCategory[category] = {total:0, hashtotals:{}, transactions:[]};
+				}
+				// create hashtotals
+				if( thisLineObject.hashtagarray.length!=0 ){
+					for (var ii = 0; ii < thisLineObject.hashtagarray.length; ii++) {
+						var thisHashTag = thisLineObject.hashtagarray[ii];
+						// if already set
+						if(transactionsByCategory[category].hashtotals[thisHashTag] == undefined){
+							transactionsByCategory[category].hashtotals[thisHashTag] = (parseFloat(thisLineObject.amount)*-1).toFixed(2); // ie -14.10 becomes 14.10
+						}else{
+							transactionsByCategory[category].hashtotals[thisHashTag]+= (parseFloat(thisLineObject.amount)*-1).toFixed(2); // ie -14.10 becomes 14.10
+						}
+					}
+				}
+
+				// add this transaction object
+				transactionsByCategory[category].transactions.push(thisLineObject);
+				// increment total spend in this category
+				transactionsByCategory[category].total += (parseFloat(thisLineObject.amount)*-1).toFixed(2); // ie -14.10 becomes 14.10
+				//
+			};
+
+			// now for each category
+			for (var i = 0; i < categories.length; i++) {
+				var category = categories[i];
+				var transactions = transactionsByCategory[category].transactions;
+
+				for (var ii = 0; ii < transactions.length; ii++) {
+					var thisTransaction = transactions[ii];
+				};
+
+			};
+
+
+
+		}
+
+		function genChart(_chartDivId){
+
+			var chart;
+			var legend;
+			var selected;
+
+			var types = [{
+			  type: "Fossil Energy",
+			  percent: 70,
+			  color: "#ff9e01",
+			  subs: [{
+			    type: "Oil",
+			    percent: 15
+			  }, {
+			    type: "Coal",
+			    percent: 35
+			  }, {
+			    type: "Nuclear",
+			    percent: 20
+			  }]
+			}, {
+			  type: "Green Energy",
+			  percent: 30,
+			  color: "#b0de09",
+			  subs: [{
+			    type: "Hydro",
+			    percent: 15
+			  }, {
+			    type: "Wind",
+			    percent: 10
+			  }, {
+			    type: "Other",
+			    percent: 5
+			  }]
+			}];
+
+			function generateChartData() {
+			  var chartData = [];
+			  for (var i = 0; i < types.length; i++) {
+			    if (i == selected) {
+			      for (var x = 0; x < types[i].subs.length; x++) {
+			        chartData.push({
+			          type: types[i].subs[x].type,
+			          percent: types[i].subs[x].percent,
+			          color: types[i].color,
+			          pulled: true
+			        });
+			      }
+			    } else {
+			      chartData.push({
+			        type: types[i].type,
+			        percent: types[i].percent,
+			        color: types[i].color,
+			        id: i
+			      });
+			    }
+			  }
+			  return chartData;
+			}
+
+			AmCharts.makeChart(_chartDivId, {
+			  "type": "pie",
+			"theme": "light",
+
+			  "dataProvider": generateChartData(),
+			  "labelText": "[[title]]: [[value]]",
+			  "balloonText": "[[title]]: [[value]]",
+			  "titleField": "type",
+			  "valueField": "percent",
+			  "outlineColor": "#FFFFFF",
+			  "outlineAlpha": 0.8,
+			  "outlineThickness": 2,
+			  "colorField": "color",
+			  "pulledField": "pulled",
+			  "titles": [{
+			    "text": "Click a slice to see the details"
+			  }],
+			  "listeners": [{
+			    "event": "clickSlice",
+			    "method": function(event) {
+			      var chart = event.chart;
+			      if (event.dataItem.dataContext.id != undefined) {
+			        selected = event.dataItem.dataContext.id;
+			      } else {
+			        selected = undefined;
+			      }
+			      chart.dataProvider = generateChartData();
+			      chart.validateData();
+			    }
+			  }],
+			  "export": {
+			    "enabled": true
+			  }
+			});
+		} // genChartEnd
+
+		
+
+		// ==================== chart stuff END
+
+
+
+
+
+
+		// helpers below
+		function addJSDateArray(_csvOb){
+			for (var i = _csvOb.length - 1; i >= 0; i--) {
+				var d = new Date(_csvOb[i].created);
+				_csvOb[i]["jsdate"] = d;
+			}
+			return _csvOb;
+		}
+
+		function addHashTagsArray(_csvOb){
+			for (var i = _csvOb.length - 1; i >= 0; i--) {
+				_csvOb[i]["hashtagarray"] = getHashTags(_csvOb[i].notes);
+			}
+			return _csvOb;
+		}
+
+		function getIndexes(_str, _search){
+			var str = _str;
+			var indices = [];
+			for(var i=0; i<str.length;i++) {
+			    if (str[i] === _search) indices.push(i);
+			}
+			return indices;
+		}
+
+		function getHashTags(_str){
+			var parsedHashTags = [];
+			var splitString = _str.split("");
+			var hashIndexes = getIndexes(_str, "#");
+			if(hashIndexes.length==0){
+				return parsedHashTags;
+			}
+			// for each hashtag, creep along the string until the next space is found or it ends
+			for (var i = 0, l = hashIndexes.length; i < l; i++) {
+				var start = hashIndexes[i]+1;
+				var end = false;
+				for(var search = 0; search < 100; search++){
+					if((start+search > splitString.length) || (splitString[start+search] == " ")){
+						end = start+search;
+						break;
+					}
+				}
+				var thisHashTag = _str.substring(start, end);
+				parsedHashTags.push(thisHashTag);
+
+			}
+			return parsedHashTags;
+		}
+
+		function CSVToArray( strData, strDelimiter ){
+	        // Check to see if the delimiter is defined. If not,
+	        // then default to comma.
+	        strDelimiter = (strDelimiter || ",");
+
+	        // Create a regular expression to parse the CSV values.
+	        var objPattern = new RegExp(
+	            (
+	                // Delimiters.
+	                "(\\" + strDelimiter + "|\\r?\\n|\\r|^)" +
+
+	                // Quoted fields.
+	                "(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|" +
+
+	                // Standard fields.
+	                "([^\"\\" + strDelimiter + "\\r\\n]*))"
+	            ),
+	            "gi"
+	            );
+
+
+	        // Create an array to hold our data. Give the array
+	        // a default empty first row.
+	        var arrData = [[]];
+
+	        // Create an array to hold our individual pattern
+	        // matching groups.
+	        var arrMatches = null;
+
+
+	        // Keep looping over the regular expression matches
+	        // until we can no longer find a match.
+	        while (arrMatches = objPattern.exec( strData )){
+
+	            // Get the delimiter that was found.
+	            var strMatchedDelimiter = arrMatches[ 1 ];
+
+	            // Check to see if the given delimiter has a length
+	            // (is not the start of string) and if it matches
+	            // field delimiter. If id does not, then we know
+	            // that this delimiter is a row delimiter.
+	            if (
+	                strMatchedDelimiter.length &&
+	                strMatchedDelimiter !== strDelimiter
+	                ){
+
+	                // Since we have reached a new row of data,
+	                // add an empty row to our data array.
+	                arrData.push( [] );
+
+	            }
+
+	            var strMatchedValue;
+
+	            // Now that we have our delimiter out of the way,
+	            // let's check to see which kind of value we
+	            // captured (quoted or unquoted).
+	            if (arrMatches[ 2 ]){
+
+	                // We found a quoted value. When we capture
+	                // this value, unescape any double quotes.
+	                strMatchedValue = arrMatches[ 2 ].replace(
+	                    new RegExp( "\"\"", "g" ),
+	                    "\""
+	                    );
+
+	            } else {
+
+	                // We found a non-quoted value.
+	                strMatchedValue = arrMatches[ 3 ];
+
+	            }
+
+
+	            // Now that we have our value string, let's add
+	            // it to the data array.
+	            arrData[ arrData.length - 1 ].push( strMatchedValue );
+	        }
+
+	        // Return the parsed data.
+	        return( arrData );
+	    } // https://stackoverflow.com/a/1293163/2244284
+
+
+	</script>
+	<script src="./jquery-csv.js"></script>
+</body>
+</html>
